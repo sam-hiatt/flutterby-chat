@@ -8,6 +8,7 @@ It stores the account password in an encrypted file. It also automatically retri
    .Start/Restart Connection: connect_to_flutterby
    .Set Email: set %nick $$?="Enter your Flutterby email address:"
    .Set Password: setup_flutterby_password
+   .Change Registered Nick: change_registered_nick
    .$style(%debug) Enable Debug Mode: set %debug $calc(1 - %debug) | debug_output $iif(%debug,enabled,disabled) | debug_output 4 Debug Mode: $iif(%debug,Enabled,Disabled)
  }
 
@@ -112,6 +113,63 @@ Description: This alias temporarily loads the stored password from a secure file
    }
  }
  
+/*
+
+This is for the nick changer
+
+*/
+
+
+ alias change_registered_nick {
+   var %url = https://flutterby.chat/api/passport/me/nick
+ if ($1) {
+  var %new_nick = $1
+ } 
+ else {
+   var %new_nick = $$?="Enter your new Flutterby nick:"
+ }
+   ; ---- Headers ----
+   bset -t &headers -1 Content-Type: application/json $+ $crlf
+   bset -t &headers -1 User-Agent: mIRC $+ $crlf
+   bset -t &headers -1 Host: flutterby.chat $+ $crlf
+   bset -t &headers -1 Cookie: ircx_refresh= $+ %ircx_refresh $+ $crlf
+   bset -t &headers -1 Authorization: Bearer %passport_token $+ $crlf
+   bset -t &headers -1 Connection: keep-alive $+ $crlf $+ $crlf
+ 
+   ; ---- Body ----
+   bset -t &body 1 $chr(123)
+ 
+   bset -t &body -1 "nick": $+ $qt(%new_nick) 
+ 
+   bset -t &body -1 $chr(125)
+ 
+   ; ---- POST ----
+   var %id = $urlget(%url,ub,&response,onNickChangeRequestComplete,&headers,&body)
+   if (%id == 0) {
+     debug_output 4 Error: Failed to initiate the HTTP request to change nick
+   }
+ 
+ }
+ 
+ 
+alias onNickChangeRequestComplete {
+ 
+   var %id = $1
+   if ($urlget(%id).error) {
+     debug_output 4 URL Get Error: $urlget(%id).error
+     return
+   }
+ }
+
+
+
+
+/*
+
+This is what pulls the passport token from the flutterby api and then connects to the chat server
+
+*/
+
  alias connect_to_flutterby {
    var %url = https://flutterby.chat/api/passport/login
  
@@ -148,7 +206,9 @@ Description: This alias temporarily loads the stored password from a secure file
      debug_output 4 URL Get Error: $urlget(%id).error
      return
    }
-   ; Retrieve the response message from the &binvar
+   
+   debug_output 4 Passport Response: $urlget($1).reply
+   set %ircx_refresh $get_ircx_refresh($urlget($1).reply)
    set %passport_token $get_token($bvar(&response,1-).text)
    flutterby_sockbot
  }
@@ -157,6 +217,10 @@ Description: This alias temporarily loads the stored password from a secure file
  alias get_token {
    if ($regex($1-,/"token":"([^"]+)"/)) return $regml(1)
  }
+
+ alias get_ircx_refresh {
+  if ($regex($1-,/Set-Cookie:\s*ircx_refresh=([^;\r\n]+)/i)) return $regml(1)
+}
  
  
  
@@ -203,7 +267,7 @@ Description: This alias temporarily loads the stored password from a secure file
    sockwrite -n $sockname AUTH GateKeeperPassport S response
    sockwrite -n $sockname AUTH GateKeeperPassport S PASSPORT $+ %passport_token
    sockwrite -n $sockname USER Rift 0 * Rift   
-      unset %passport_token
+      ;unset %passport_token
  }
  
  on *:sockread:sockbot.remote.*: {
