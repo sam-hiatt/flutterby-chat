@@ -159,6 +159,7 @@ alias onNickChangeRequestComplete {
      debug_output 4 URL Get Error: $urlget(%id).error
      return
    }
+   debug_output 4 $urlget($1).reply
  }
 
 
@@ -170,7 +171,7 @@ This is what pulls the passport token from the flutterby api and then connects t
 
 */
 
- alias connect_to_flutterby {
+ alias get_flutterby_passport {
    var %url = https://flutterby.chat/api/passport/login
  
  
@@ -210,7 +211,10 @@ This is what pulls the passport token from the flutterby api and then connects t
    debug_output 4 Passport Response: $urlget($1).reply
    set %ircx_refresh $get_ircx_refresh($urlget($1).reply)
    set %passport_token $get_token($bvar(&response,1-).text)
-   flutterby_sockbot
+   if (%retrying) {
+    send_auth %retrying
+    unset %retrying
+   }
  }
  
  
@@ -222,14 +226,19 @@ This is what pulls the passport token from the flutterby api and then connects t
   if ($regex($1-,/Set-Cookie:\s*ircx_refresh=([^;\r\n]+)/i)) return $regml(1)
 }
  
- 
+ alias send_auth {
+   sockwrite -n $1 AUTH GateKeeperPassport I init
+   sockwrite -n $1 AUTH GateKeeperPassport S response
+   sockwrite -n $1 AUTH GateKeeperPassport S PASSPORT $+ %passport_token
+   sockwrite -n $1 USER Rift 0 * Rift   
+ }
  
  /*
  
  This is a basic socket connector for the chat
  
  */
- alias flutterby_sockbot {
+ alias connect_to_flutterby {
  
    window -ek @Flutterby_Debug
  
@@ -263,11 +272,7 @@ This is what pulls the passport token from the flutterby api and then connects t
  
  on *:sockopen:sockbot.remote.*: {
    sockwrite -n $sockname CAP REQ :redmondchat/take-over
-   sockwrite -n $sockname AUTH GateKeeperPassport I init
-   sockwrite -n $sockname AUTH GateKeeperPassport S response
-   sockwrite -n $sockname AUTH GateKeeperPassport S PASSPORT $+ %passport_token
-   sockwrite -n $sockname USER Rift 0 * Rift   
-      ;unset %passport_token
+   send_auth $sockname
  }
  
  on *:sockread:sockbot.remote.*: {
@@ -277,6 +282,16 @@ This is what pulls the passport token from the flutterby api and then connects t
    var %match_num = $gettok($sockname,3-,46)
    debug_output 3 <-- IRC Server $sockname %data
  
- 
+ if ($2 == 910) {
+  ;the server is telling us that the passport token is invalid, so we need to get a new one and try again
+  set %retrying $sockname
+  get_flutterby_passport
+ } 
+ elseif ($2 == 911) {
+  ;we have been banned from authing so stop the retry
+  unset %retrying  
+ }
+
+
      sockwrite -n sockbot.local. $+ %match_num $1- 
  }
