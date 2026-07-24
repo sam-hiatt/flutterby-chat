@@ -294,20 +294,6 @@ on *:DISCONNECT:{
 This is a basic socket connector for the chat
 
 */
-alias connect_to_flutterby_bak {
-
-  window -ek @Flutterby_Debug
-
-  if ($sock(sockbot*)) {
-    sockclose sockbot.*
-  }
-
-  var %port =  $r(11111,59999)
-  socklisten -n sockbot.listener. $+ %port %port
-  server -m localhost %port
-
-
-}
 
 alias connect_to_flutterby {
 
